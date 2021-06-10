@@ -14,7 +14,7 @@ from chia.types.generator_types import BlockGenerator
 from chia.types.name_puzzle_condition import NPC
 from chia.util.clvm import int_from_bytes
 from chia.util.condition_tools import ConditionOpcode, conditions_by_opcode
-from chia.util.errors import Err
+from chia.util.errors import Err, ValidationError
 from chia.util.ints import uint32, uint64, uint16
 from chia.wallet.puzzles.generator_loader import GENERATOR_FOR_SINGLE_COIN_MOD
 from chia.wallet.puzzles.rom_bootstrap_generator import get_generator
@@ -139,11 +139,11 @@ def parse_aggsig(args: SExp) -> List[bytes]:
     args = args.rest()
     message = args.first().atom
     if args.rest().atom != b"":
-        raise RuntimeError("too many condition arguments")
+        raise ValidationError(Err.INVALID_CONDITION)
     if len(pubkey) != 48:
-        raise RuntimeError("invalid pubkey in AGGSIG condition")
+        raise ValidationError(Err.INVALID_CONDITION)
     if len(message) > 1024:
-        raise RuntimeError("invalid message in AGGSIG condition")
+        raise ValidationError(Err.INVALID_CONDITION)
     return [pubkey, message]
 
 
@@ -152,85 +152,89 @@ def parse_create_coin(args: SExp) -> List[bytes]:
     args = args.rest()
     amount = args.first().atom
     if args.rest().atom != b"":
-        raise RuntimeError("too many condition arguments")
+        raise ValidationError(Err.INVALID_CONDITION)
     if len(puzzle_hash) != 32:
-        raise RuntimeError("invalid f{name}")
+        raise ValidationError(Err.INVALID_CONDITION)
     amount_int = int_from_bytes(amount)
-    if amount_int >= 2 ** 64 or amount_int < 0:
-        raise RuntimeError("invalid coin amount")
+    if amount_int >= 2 ** 64:
+        raise ValidationError(Err.COIN_AMOUNT_EXCEEDS_MAXIMUM)
+    if amount_int < 0:
+        raise ValidationError(Err.COIN_AMOUNT_NEGATIVE)
     return [puzzle_hash, amount]
 
 
-def parse_seconds(args: SExp) -> Optional[List[bytes]]:
+def parse_seconds(args: SExp, error_code: int) -> Optional[List[bytes]]:
     seconds = args.first().atom
     if args.rest().atom != b"":
-        raise RuntimeError("too many condition arguments")
+        raise ValidationError(Err.INVALID_CONDITION)
     seconds_int = int_from_bytes(seconds)
     # this condition is inherently satisified, there is no need to keep it
     if seconds_int <= 0:
         return None
     if seconds_int >= 2 ** 64:
-        raise RuntimeError("invalid timestamp")
+        raise ValidationError(error_code)
     return [seconds]
 
 
-def parse_height(args: SExp) -> Optional[List[bytes]]:
+def parse_height(args: SExp, error_code: int) -> Optional[List[bytes]]:
     height = args.first().atom
     if args.rest().atom != b"":
-        raise RuntimeError("too many condition arguments")
+        raise ValidationError(Err.INVALID_CONDITION)
     height_int = int_from_bytes(height)
     # this condition is inherently satisified, there is no need to keep it
     if height_int <= 0:
         return None
     if height_int >= 2 ** 32:
-        raise RuntimeError("invalid height")
+        raise ValidationError(error_code)
     return [height]
 
 
 def parse_fee(args: SExp) -> List[bytes]:
     fee = args.first().atom
     if args.rest().atom != b"":
-        raise RuntimeError("too many condition arguments")
+        raise ValidationError(Err.INVALID_CONDITION)
     fee_int = int_from_bytes(fee)
     if fee_int >= 2 ** 64 or fee_int < 0:
-        raise RuntimeError("invalid fee")
+        raise ValidationError(Err.RESERVE_FEE_CONDITION_FAILED)
     return [fee]
 
 
-def parse_coin_id(args: SExp) -> List[bytes]:
+def parse_coin_id(args: SExp, error_code: int) -> List[bytes]:
     coin = args.first().atom
     if args.rest().atom != b"":
-        raise RuntimeError("too many condition arguments")
+        raise ValidationError(Err.INVALID_CONDITION)
     if len(coin) != 32:
-        raise RuntimeError("invalid coin ID")
+        raise ValidationError(error_code)
     return [coin]
 
 
-def parse_hash(args: SExp, name: str) -> List[bytes]:
+def parse_hash(args: SExp, error_code: int) -> List[bytes]:
     h = args.first().atom
     if args.rest().atom != b"":
-        raise RuntimeError("too many condition arguments")
+        raise ValidationError(Err.INVALID_CONDITION)
     if len(h) != 32:
-        raise RuntimeError("invalid f{name}")
+        raise ValidationError(error_code)
     return [h]
 
 
 def parse_amount(args: SExp) -> List[bytes]:
     amount = args.first().atom
     if args.rest().atom != b"":
-        raise RuntimeError("too many condition arguments")
+        raise ValidationError(Err.INVALID_CONDITION)
     amount_int = int_from_bytes(amount)
-    if amount_int >= 2 ** 64 or amount_int < 0:
-        raise RuntimeError("invalid amount")
+    if amount_int < 0:
+        raise ValidationError(Err.COIN_AMOUNT_NEGATIVE)
+    if amount_int >= 2 ** 64:
+        raise ValidationError(Err.COIN_AMOUNT_EXCEEDS_MAXIMUM)
     return [amount]
 
 
 def parse_announcement(args: SExp) -> List[bytes]:
     msg = args.first().atom
     if args.rest().atom != b"":
-        raise RuntimeError("too many condition arguments")
+        raise ValidationError(Err.INVALID_CONDITION)
     if len(msg) > 1024:
-        raise RuntimeError("invalid announcement")
+        raise ValidationError(Err.INVALID_CONDITION)
     return [msg]
 
 
@@ -246,33 +250,33 @@ def parse_condition_args(args: SExp, condition: ConditionOpcode) -> Tuple[int, O
     elif condition is ConditionOpcode.CREATE_COIN:
         return ConditionCost.CREATE_COIN.value, parse_create_coin(args)
     elif condition is ConditionOpcode.ASSERT_SECONDS_ABSOLUTE:
-        return ConditionCost.ASSERT_SECONDS_ABSOLUTE.value, parse_seconds(args)
+        return ConditionCost.ASSERT_SECONDS_ABSOLUTE.value, parse_seconds(args, Err.ASSERT_SECONDS_ABSOLUTE_FAILED)
     elif condition is ConditionOpcode.ASSERT_SECONDS_RELATIVE:
-        return ConditionCost.ASSERT_SECONDS_RELATIVE.value, parse_seconds(args)
+        return ConditionCost.ASSERT_SECONDS_RELATIVE.value, parse_seconds(args, Err.ASSERT_SECONDS_RELATIVE_FAILED)
     elif condition is ConditionOpcode.ASSERT_HEIGHT_ABSOLUTE:
-        return ConditionCost.ASSERT_HEIGHT_ABSOLUTE.value, parse_height(args)
+        return ConditionCost.ASSERT_HEIGHT_ABSOLUTE.value, parse_height(args, Err.ASSERT_HEIGHT_ABSOLUTE_FAILED)
     elif condition is ConditionOpcode.ASSERT_HEIGHT_RELATIVE:
-        return ConditionCost.ASSERT_HEIGHT_RELATIVE.value, parse_height(args)
+        return ConditionCost.ASSERT_HEIGHT_RELATIVE.value, parse_height(args, Err.ASSERT_HEIGHT_RELATIVE_FAILED)
     elif condition is ConditionOpcode.ASSERT_MY_COIN_ID:
-        return ConditionCost.ASSERT_MY_COIN_ID.value, parse_coin_id(args)
+        return ConditionCost.ASSERT_MY_COIN_ID.value, parse_coin_id(args, Err.ASSERT_MY_COIN_ID_FAILED)
     elif condition is ConditionOpcode.RESERVE_FEE:
         return ConditionCost.RESERVE_FEE.value, parse_fee(args)
     elif condition is ConditionOpcode.CREATE_COIN_ANNOUNCEMENT:
         return ConditionCost.CREATE_COIN_ANNOUNCEMENT.value, parse_announcement(args)
     elif condition is ConditionOpcode.ASSERT_COIN_ANNOUNCEMENT:
-        return ConditionCost.ASSERT_COIN_ANNOUNCEMENT.value, parse_hash(args, "announcement hash")
+        return ConditionCost.ASSERT_COIN_ANNOUNCEMENT.value, parse_hash(args, Err.ASSERT_ANNOUNCE_CONSUMED_FAILED)
     elif condition is ConditionOpcode.CREATE_PUZZLE_ANNOUNCEMENT:
         return ConditionCost.CREATE_PUZZLE_ANNOUNCEMENT.value, parse_announcement(args)
     elif condition is ConditionOpcode.ASSERT_PUZZLE_ANNOUNCEMENT:
-        return ConditionCost.ASSERT_PUZZLE_ANNOUNCEMENT.value, parse_hash(args, "puzzle announcement")
+        return ConditionCost.ASSERT_PUZZLE_ANNOUNCEMENT.value, parse_hash(args, Err.ASSERT_ANNOUNCE_CONSUMED_FAILED)
     elif condition is ConditionOpcode.ASSERT_MY_PARENT_ID:
-        return ConditionCost.ASSERT_MY_PARENT_ID.value, parse_coin_id(args)
+        return ConditionCost.ASSERT_MY_PARENT_ID.value, parse_coin_id(args, Err.ASSERT_MY_PARENT_ID_FAILED)
     elif condition is ConditionOpcode.ASSERT_MY_PUZZLEHASH:
-        return ConditionCost.ASSERT_MY_PUZZLEHASH.value, parse_hash(args, "puzzle hash")
+        return ConditionCost.ASSERT_MY_PUZZLEHASH.value, parse_hash(args, Err.ASSERT_MY_PUZZLEHASH_FAILED)
     elif condition is ConditionOpcode.ASSERT_MY_AMOUNT:
         return ConditionCost.ASSERT_MY_AMOUNT.value, parse_amount(args)
     else:
-        assert False
+        return (0, Err.INVALID_CONDITION)
 
 
 opcodes: Set[bytes] = set(item.value for item in ConditionOpcode)
@@ -289,7 +293,7 @@ def parse_condition(cond: SExp, safe_mode: bool) -> Tuple[int, Optional[Conditio
         cvl = ConditionWithArgs(opcode, cond.rest().as_atom_list())
         cost = 0
     else:
-        raise RuntimeError("unknown condition")
+        raise ValidationError(Err.INVALID_CONDITION)
     return cost, cvl
 
 
@@ -311,6 +315,7 @@ def get_name_puzzle_conditions(
         block_program, block_program_args = setup_generator_args(generator)
         max_cost -= len(bytes(generator.program)) * cost_per_byte
         if max_cost < 0:
+            breakpoint()
             return NPCResult(uint16(Err.INVALID_BLOCK_COST.value), [], uint64(0))
         if safe_mode:
             clvm_cost, result = GENERATOR_MOD.run_safe_with_cost(max_cost, block_program, block_program_args)
@@ -318,6 +323,9 @@ def get_name_puzzle_conditions(
             clvm_cost, result = GENERATOR_MOD.run_with_cost(max_cost, block_program, block_program_args)
 
         max_cost -= clvm_cost
+        if max_cost < 0:
+            breakpoint()
+            return NPCResult(uint16(Err.INVALID_BLOCK_COST.value), [], uint64(0))
         npc_list: List[NPC] = []
 
         for res in result.first().as_iter():
@@ -332,6 +340,7 @@ def get_name_puzzle_conditions(
                 cost, cvl = parse_condition(cond, safe_mode)
                 max_cost -= cost
                 if max_cost < 0:
+                    breakpoint()
                     return NPCResult(uint16(Err.INVALID_BLOCK_COST.value), [], uint64(0))
                 if cvl is not None:
                     conditions_list.append(cvl)
@@ -343,6 +352,8 @@ def get_name_puzzle_conditions(
                 NPC(spent_coin.name(), spent_coin.puzzle_hash, [(a, b) for a, b in conditions_dict.items()])
             )
         return NPCResult(None, npc_list, uint64(clvm_cost))
+    except ValidationError as e:
+        return NPCResult(uint16(e.code.value), [], uint64(0))
     except Exception:
         return NPCResult(uint16(Err.GENERATOR_RUNTIME_ERROR.value), [], uint64(0))
 
