@@ -163,7 +163,7 @@ def parse_create_coin(args: SExp) -> List[bytes]:
     return [puzzle_hash, amount]
 
 
-def parse_seconds(args: SExp, error_code: int) -> Optional[List[bytes]]:
+def parse_seconds(args: SExp, error_code: Err) -> Optional[List[bytes]]:
     seconds = args.first().atom
     if args.rest().atom != b"":
         raise ValidationError(Err.INVALID_CONDITION)
@@ -176,7 +176,7 @@ def parse_seconds(args: SExp, error_code: int) -> Optional[List[bytes]]:
     return [seconds]
 
 
-def parse_height(args: SExp, error_code: int) -> Optional[List[bytes]]:
+def parse_height(args: SExp, error_code: Err) -> Optional[List[bytes]]:
     height = args.first().atom
     if args.rest().atom != b"":
         raise ValidationError(Err.INVALID_CONDITION)
@@ -199,7 +199,7 @@ def parse_fee(args: SExp) -> List[bytes]:
     return [fee]
 
 
-def parse_coin_id(args: SExp, error_code: int) -> List[bytes]:
+def parse_coin_id(args: SExp, error_code: Err) -> List[bytes]:
     coin = args.first().atom
     if args.rest().atom != b"":
         raise ValidationError(Err.INVALID_CONDITION)
@@ -208,7 +208,7 @@ def parse_coin_id(args: SExp, error_code: int) -> List[bytes]:
     return [coin]
 
 
-def parse_hash(args: SExp, error_code: int) -> List[bytes]:
+def parse_hash(args: SExp, error_code: Err) -> List[bytes]:
     h = args.first().atom
     if args.rest().atom != b"":
         raise ValidationError(Err.INVALID_CONDITION)
@@ -276,7 +276,7 @@ def parse_condition_args(args: SExp, condition: ConditionOpcode) -> Tuple[int, O
     elif condition is ConditionOpcode.ASSERT_MY_AMOUNT:
         return ConditionCost.ASSERT_MY_AMOUNT.value, parse_amount(args)
     else:
-        return (0, Err.INVALID_CONDITION)
+        raise ValidationError(Err.INVALID_CONDITION)
 
 
 opcodes: Set[bytes] = set(item.value for item in ConditionOpcode)

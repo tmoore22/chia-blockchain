@@ -957,7 +957,7 @@ class TestMempoolManager:
 
         await time_out_assert(60, node_height_at_least, True, full_node_1, start_height + 3)
 
-        cvp = ConditionWithArgs(ConditionOpcode.RESERVE_FEE, [int_to_bytes(2**64)])
+        cvp = ConditionWithArgs(ConditionOpcode.RESERVE_FEE, [int_to_bytes(2 ** 64)])
         dic = {cvp.opcode: [cvp]}
 
         spend_bundle1 = generate_test_spend_bundle(list(blocks[-1].get_included_reward_coins())[0], dic, uint64(10))
