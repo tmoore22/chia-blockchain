@@ -182,7 +182,7 @@ def parse_height(args: SExp) -> Optional[List[bytes]]:
     # this condition is inherently satisified, there is no need to keep it
     if height_int <= 0:
         return None
-    if height_int >= 2 ** 32 or height_int < 0:
+    if height_int >= 2 ** 32:
         raise RuntimeError("invalid height")
     return [height]
 
@@ -311,7 +311,7 @@ def get_name_puzzle_conditions(
         block_program, block_program_args = setup_generator_args(generator)
         max_cost -= len(bytes(generator.program)) * cost_per_byte
         if max_cost < 0:
-            return NPCResult(uint16(Err.BLOCK_COST_EXCEEDS_MAX.value), [], uint64(0))
+            return NPCResult(uint16(Err.INVALID_BLOCK_COST.value), [], uint64(0))
         if safe_mode:
             clvm_cost, result = GENERATOR_MOD.run_safe_with_cost(max_cost, block_program, block_program_args)
         else:
@@ -332,7 +332,7 @@ def get_name_puzzle_conditions(
                 cost, cvl = parse_condition(cond, safe_mode)
                 max_cost -= cost
                 if max_cost < 0:
-                    return NPCResult(uint16(Err.BLOCK_COST_EXCEEDS_MAX.value), [], uint64(0))
+                    return NPCResult(uint16(Err.INVALID_BLOCK_COST.value), [], uint64(0))
                 if cvl is not None:
                     conditions_list.append(cvl)
 

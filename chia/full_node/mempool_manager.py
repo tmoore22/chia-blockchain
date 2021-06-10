@@ -255,6 +255,8 @@ class MempoolManager:
         log.debug(f"Cost: {cost}")
 
         if cost > int(self.limit_factor * self.constants.MAX_BLOCK_COST_CLVM):
+            # we shouldn't ever end up here, since the cost is limited when we
+            # execute the CLVM program.
             return None, MempoolInclusionStatus.FAILED, Err.BLOCK_COST_EXCEEDS_MAX
 
         if npc_result.error is not None:
